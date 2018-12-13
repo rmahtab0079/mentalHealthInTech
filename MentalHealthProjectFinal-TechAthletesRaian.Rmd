@@ -1,0 +1,198 @@
+---
+title: "Mental Health Analysis In Tech 2016"
+author: "Tech Atlethes and Raian: MD Abir A. Choudhury, Matthew Rodriguez, Rageeb Mahtab, Raian Rahman"
+date: "12/5/2018"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+fig.path = "/Users/mdabirchoudhury/Desktop/Classes/CIS 3920/Team Project/Images"
+```
+Delete the memory
+```{r DeleteMem}
+rm(list = ls())
+```
+Read in the data
+```{r ReadData}
+MentalHealthSurvey <- read.csv(file.choose(), header = T, stringsAsFactors = T)
+```
+Examine the data to see if the data needs any cleaning
+```{r ExamineData}
+typeof(MentalHealthSurvey)
+head(MentalHealthSurvey)
+dim(MentalHealthSurvey) #dimensions of dataset
+str(MentalHealthSurvey) # data type of each variable
+summary(MentalHealthSurvey) 
+names(MentalHealthSurvey) # names of variables
+```
+
+```{r Check what type of variable (Factor Or Int)}
+str(MentalHealthSurvey)
+```
+
+str(MentalHealthSurvey)
+
+The data needs cleaning, but for now attach the variables to the dataset
+```{r attach}
+attach(MentalHealthSurvey)
+```
+Run The Classification
+```{r - Classification Tree Using Predictors We believe will determine Professional Diagnoses}
+library(tree)
+set.seed(1)
+train=sample(nrow(MentalHealthSurvey),nrow(MentalHealthSurvey)*0.8)
+tree.model=tree(Medical_Professional_Mental_Health_Condition_Diagnoses~ Professional_Mental_Health_Treatment + Gender + Remote_Work + Family_History_Of_Mental_Illness + Mental_Health_Disorder_Current + Past_Mental_Health_Disorder + Age,subset=train)
+
+MentalHealthSurvey.test = MentalHealthSurvey[-train,]
+Medical_Professional_Mental_Health_Condition_Diagnoses.test = Medical_Professional_Mental_Health_Condition_Diagnoses[-train]
+
+cv.model = cv.tree(tree.model,K=10)
+cv.model
+prune.model = prune.tree(tree.model,best=7) 
+plot(prune.model)
+text(prune.model,pretty=0)
+
+prunetree.pred=predict(prune.model,MentalHealthSurvey.test,type="class")
+
+table(prunetree.pred,Medical_Professional_Mental_Health_Condition_Diagnoses.test)
+```
+
+
+Start to conduct EDA
+See if there are missing data in the dataset. Is.na outputs a matrix of boolean values that indicates whether a value in the object is empty or not empty
+```{r TestMissingData}
+is.na(MentalHealthSurvey)
+```
+There are missing values in the dataset, so the next step is to clean up the missing data fields. Input NA into wherever the value is missing for a Factor Variable and NULL wherever a missing value for int values
+```{r RecodeValues}
+# missing values in Factor Variables
+for(i in 1:63){
+  if(typeof(c(1:63)) == "Factor") {
+    c(i)[c(i) == " "] <- NA
+  }
+}
+
+# missing values in Num
+for(i in 1:63){
+  if(typeof(c(1:63)) == "int") {
+    c(i)[c(i) == " "] <- NULL
+  }
+}
+# check to see it worked
+head(MentalHealthSurvey)
+```
+Continue EDA step with a package called DataExplorer which should give great visualizations of the current dataset
+```{r ExploratoryDataAnalysis}
+# Install if the package doesn't exist 
+# Install.packages('DataExplorer) 
+library(DataExplorer)
+# introduce data
+introduce(MentalHealthSurvey)
+
+# continuous variables
+plot_str(MentalHealthSurvey)
+plot_missing(MentalHealthSurvey)
+
+# categorical variables
+plot_bar(MentalHealthSurvey)
+
+# because company_type is an int, the omit function needs to be turned into a factor this way
+Company_Type <- na.omit(Company_Type)
+str(Company_Type)
+Company_Type <- as.factor(Company_Type)
+
+
+# Incidence rates with Y-VARIABLE
+# Gender,Company_Type, Remote_Work, Self_Employed
+summary(MentalHealthSurvey)
+MentalHealthSurvey[,1] = as.factor(Self_Employed)
+MentalHealthSurvey[,53] = as.factor(Professional_Mental_Health_Treatment)
+str(MentalHealthSurvey)
+
+# Response Y is column 51
+```
+Now explore that dataset in terms of variables that we are interested in. 
+```{r Data Visualizations}
+# Distribution of Gender
+par(bg=NA)
+par(mfrow=c(1,2))
+gender_tbl <- table(MentalHealthSurvey$Gender)
+barplot(gender_tbl, main="Distribution of Gender", 
+  	xlab="Gender", ylab="Count", col="deepskyblue", col.axis = "deepskyblue4", col.lab = "deepskyblue4", col.main = "deepskyblue4", border = "White")
+
+# Distribution of Remote Workers
+par(bg=NA)
+par(mfrow=c(1,2))
+remote_work_tbl <- table(MentalHealthSurvey$Remote_Work)
+barplot(remote_work_tbl, main="Distribution of Remote Workers", 
+  	xlab="Remote Work", ylab="Count", col="deepskyblue", col.axis = "deepskyblue4", col.lab = "deepskyblue4", col.main = "deepskyblue4", border = "White")
+
+# Distribution of Company Types
+par(bg=NA)
+par(mfrow=c(1,2))
+company_type_tbl <- table(MentalHealthSurvey$Company_Type)
+barplot(company_type_tbl, main="Distribution of Company Types", 
+  	xlab="Company Types", ylab="Count", names.arg = c("Not tech", "Tech"), col="deepskyblue", col.axis = "deepskyblue4", col.lab = "deepskyblue4", col.main = "deepskyblue4", border = "White")
+
+# Distribution of Employee Types
+par(bg=NA)
+par(mfrow=c(1,2))
+self_employed_tbl <- table(MentalHealthSurvey$Self_Employed)
+barplot(self_employed_tbl, main="Distribution of Employee Types", 
+  	xlab="Self-employed?", ylab="Count", names.arg = c("No", "Yes"), col="deepskyblue", col.axis = "deepskyblue4", col.lab = "deepskyblue4", col.main = "deepskyblue4", border = "White")
+```
+
+
+```{r LogisticRegression}
+library(magrittr)
+library(MASS)
+library(caret)
+
+# Split the dataset
+set.seed(1)
+training.samples <- Medical_Professional_Mental_Health_Condition_Diagnoses %>% createDataPartition(p = 0.8, list = FALSE)
+train.data <- MentalHealthSurvey[training.samples, ]
+test.data <- MentalHealthSurvey[-training.samples, ]
+
+# fit the model
+LOmodel <- glm(Medical_Professional_Mental_Health_Condition_Diagnoses~Gender + Remote_Work + Self_Employed + Family_History_Of_Mental_Illness + Mental_Health_Disorder_Current + Past_Mental_Health_Disorder + Professional_Mental_Health_Treatment + Age, data = train.data, family = "binomial") %>% stepAIC(trace = FALSE)
+
+# Summarize the final selected model
+summary(LOmodel)
+
+
+# at this point we evaluate the performance of our logistic regression model on the test data set
+
+#LOmodel.probs.test = predict(LOmodel, test.data, type = "response")
+#LOmodel.pred = rep(No, 20% of our records)
+probabilities <- LOmodel %>% predict(test.data, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "No", "Yes")
+
+# Model accuracy = 0.8986014
+# Model inaccuracy = 0.1013986
+mean(predicted.classes==test.data$Medical_Professional_Mental_Health_Condition_Diagnoses)
+
+k=5
+folds=sample(1:k,nrow(MentalHealthSurvey),replace=TRUE)
+accuracy = rep(0,k)
+for(i in 1:k) 
+{
+  glm.fit3=glm(Medical_Professional_Mental_Health_Condition_Diagnoses ~ Remote_Work + Self_Employed + Mental_Health_Disorder_Current + Past_Mental_Health_Disorder + Professional_Mental_Health_Treatment,family="binomial",data=MentalHealthSurvey[folds!=i,])
+  MentalHealthSurvey.test=MentalHealthSurvey[folds==i, ]
+  glm.probs3 =predict(glm.fit3,MentalHealthSurvey.test, type="response")
+  glm.pred3=rep("No",nrow(MentalHealthSurvey[folds==i,]))
+  glm.pred3[glm.probs3>.5]="Yes"
+  test.truevalue=Medical_Professional_Mental_Health_Condition_Diagnoses[folds==i]
+  accuracy[i]=mean(glm.pred3==test.truevalue)
+}
+
+mean(accuracy)
+```
+
+
+
+
+
+
